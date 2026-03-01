@@ -1,4 +1,4 @@
-name: fire_analysis
+name: final-project-brook
 channels:
   - conda-forge
 dependencies:
