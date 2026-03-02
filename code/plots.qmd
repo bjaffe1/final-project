@@ -1,0 +1,176 @@
+---
+title: "30538 Final Project Static Plot Code"
+author: "Brook Jaffe"
+date: "9 March 2026"
+format: 
+  pdf:
+    include-in-header: 
+       text: |
+         \usepackage{fvextra}
+         \DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,commandchars=\\\{\}}
+include-before-body:
+  text: |
+    \RecustomVerbatimEnvironment{verbatim}{Verbatim}{
+      showspaces = false,
+      showtabs = false,
+      breaksymbolleft={},
+      breaklines
+    }
+output:
+  echo: false
+  eval: false
+---
+```{python}
+# setup
+import geopandas as gpd
+import pandas as pd
+from pathlib import Path
+from shapely import wkt
+
+script_dir = Path(__file__).parent.parent
+
+home_values = script_dir / 'data/derived-data/home_values_processed.csv'
+penetration_rates = script_dir / 'data/derived-data/residential_penetration_rates.csv'
+multiple_loss = script_dir / 'data/derived-data/multiple_loss_properties.csv'
+
+home_values_df = pd.read_csv(home_values)
+penetration_rates_df = pd.read_csv(penetration_rates)
+multiple_loss_df = pd.read_csv(multiple_loss, low_memory=False)
+```
+
+
+```{python}
+# Create merged data frame with county-level total losses and data from penetration_rates_df, drop non-residential losses
+multiple_loss_df['fipsCountyCode'] = pd.to_numeric(
+    multiple_loss_df['fipsCountyCode'], errors='coerce')
+multiple_loss_df = multiple_loss_df.rename(columns={'fipsCountyCode':'fipsCode'})
+multiple_loss_df = multiple_loss_df[
+    (multiple_loss_df['occupancyType'] == 1) | 
+    (multiple_loss_df['occupancyType'] == 2) | 
+    (multiple_loss_df['occupancyType'] == 3) |
+    (multiple_loss_df['occupancyType'] == 11) |
+    (multiple_loss_df['occupancyType'] == 12) |
+    (multiple_loss_df['occupancyType'] == 13) |
+    (multiple_loss_df['occupancyType'] == 14) |
+    (multiple_loss_df['occupancyType'] == 15) |
+    (multiple_loss_df['occupancyType'] == 16)
+]
+multiple_loss_by_county = multiple_loss_df.groupby(
+    by='fipsCode').sum().reset_index()[['fipsCode','totalLosses']]
+multiple_loss_penetration_county_df = multiple_loss_by_county.merge(
+    penetration_rates_df, how='inner', on='fipsCode'
+)
+```
+
+
+```{python}
+# Make a column for losses per res structure
+multiple_loss_penetration_county_df['loss_by_structure'] = multiple_loss_penetration_county_df['totalLosses'] / multiple_loss_penetration_county_df['totalResStructures']
+
+# Drop observations that show penetration rates higher than 100%
+multiple_loss_penetration_county_df = multiple_loss_penetration_county_df[
+    multiple_loss_penetration_county_df[
+        'resPenetrationRateSfha'] <= 1]
+
+# Categorize penetration rates
+penetration_category_sfha = []
+for penetration_rate in multiple_loss_penetration_county_df['resPenetrationRateSfha']:
+    if penetration_rate < 0.2:
+        penetration_category_sfha.append('0-19.99%')
+    elif penetration_rate < 0.4:
+        penetration_category_sfha.append('20-39.99%')
+    elif penetration_rate < 0.6:
+        penetration_category_sfha.append('40-59.99%')
+    elif penetration_rate < 0.8:
+        penetration_category_sfha.append('60-79.99%')
+    else:
+        penetration_category_sfha.append('80-100%')
+multiple_loss_penetration_county_df[
+    'penetration_rate_quintile'] = penetration_category_sfha
+
+# Drop observations over 50% sfha to stop compression of plot
+multiple_loss_penetration_county_df = multiple_loss_penetration_county_df[
+    multiple_loss_penetration_county_df['percent_sfha'] < 30
+    ]
+```
+
+
+```{python}
+import altair as alt
+
+losses_vs_sfha = alt.Chart(
+    multiple_loss_penetration_county_df,
+    title = 'Residential Properties with Multiple NFIP Claims vs SFHA Prevalence in US Counties'
+).mark_point(
+    size=1
+).encode(
+    x = alt.X('percent_sfha').title(
+        'Homes located within SFHAs (% of total homes)'
+        ),
+    y = alt.Y('loss_by_structure', 
+        scale=alt.Scale(type='log')).title(
+        'Multiple claims per property (log)'
+        ),
+    color=alt.Color('penetration_rate_quintile').title(
+        'NFIP takeup rate in SFHAs'
+        )
+)
+
+losses_vs_sfha.show()
+```
+
+```{python}
+# Create merged dataframe with property value trends and percentage sfha by zip code
+home_values_sfha = home_values_df.merge(
+    penetration_rates_df, how='inner', on=['state','county']
+)
+```
+
+```{python}
+# Create a new column for ranges of SFHA percentages
+sfha_range = []
+for percent in home_values_sfha['percent_sfha']:
+    if percent < 0.5:
+        sfha_range.append('<0.5%')
+    elif percent < 1:
+        sfha_range.append('0.5 - <1%')
+    elif percent < 2:
+        sfha_range.append('1% - <2%')
+    elif percent < 3:
+        sfha_range.append('2% - <3%')
+    elif percent < 4:
+        sfha_range.append('3% - <4%')
+    elif percent < 5:
+        sfha_range.append('4% - <5%')
+    elif percent < 10:
+        sfha_range.append('5% - <10%')
+    else:
+        sfha_range.append('10% or greater')
+home_values_sfha['sfha_range'] = sfha_range
+```
+
+```{python}
+# Group by SFHA range and find average property value trend
+home_value_by_sfha_amount = home_values_sfha[['sfha_range', 'percent_growth']].groupby('sfha_range').mean().reset_index()
+```
+
+```{python}
+# Make a chart showing property value trends by SFHA range
+property_value_sfha = alt.Chart(
+    home_value_by_sfha_amount, width=300, 
+    title = 'Property Value Trends by Flood Zone Prevalence in US Counties'
+).mark_bar().encode(
+    x = alt.X('sfha_range:O', 
+    sort=['<0.5%','0.5 - <1%','1% - <2%',
+    '2% - <3%','3% - <4%','4% - <5%','5% - <10%',
+    '10% or greater'],
+    axis=alt.Axis(labelAngle = -45)).title(
+        'Proportion of residences in SFHAs'
+    ),
+    y = alt.Y('percent_growth:Q').title(
+        'Average growth in housing values (%)'
+    )
+)
+
+property_value_sfha.show()
+```
