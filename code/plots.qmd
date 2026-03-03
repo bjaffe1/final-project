@@ -38,6 +38,18 @@ penetration_rates_df = pd.read_csv(penetration_rates)
 multiple_loss_df = pd.read_csv(multiple_loss, low_memory=False)
 ```
 
+```{python}
+import tempfile
+from IPython.display import SVG, display, Image
+import vl_convert as vlc
+
+def display_altair_png(chart, scale=2):
+    png_bytes = vlc.vegalite_to_png(chart.to_dict(), scale=scale)
+    with tempfile.NamedTemporaryFile(suffix=".png") as tmp:
+        tmp.write(png_bytes)
+        tmp.flush()
+        display(Image(filename=tmp.name))
+```
 
 ```{python}
 # Create merged data frame with county-level total losses and data from penetration_rates_df, drop non-residential losses
@@ -116,7 +128,7 @@ losses_vs_sfha = alt.Chart(
         )
 )
 
-losses_vs_sfha.show()
+display_altair_png(losses_vs_sfha, scale=4)
 ```
 
 ```{python}
@@ -172,5 +184,63 @@ property_value_sfha = alt.Chart(
     )
 )
 
-property_value_sfha.show()
+display_altair_png(property_value_sfha, scale=4)
+```
+
+```{python}
+# Map showing NFIP takeup rates by state and multiple loss properties
+nfip_by_state = penetration_rates_df[[
+    'state', 'resContractsInForce', 'totalResStructures']].groupby(
+        'state').sum().reset_index()
+nfip_by_state['percent_nfip'] = (
+    nfip_by_state['resContractsInForce'] / nfip_by_state['totalResStructures']) * 100
+
+# Link state map to NFIP data, filter to contiguous 48 states
+states_path = script_dir / 'data/raw-data/cb_2018_us_state_500k/cb_2018_us_state_500k.shp'
+state_shapes = gpd.read_file(states_path)
+state_shapes = state_shapes.to_crs('EPSG:4326')
+state_shapes = state_shapes.rename(columns={'NAME':'state'})
+state_shapes = state_shapes[['state','geometry']]
+nfip_by_state = nfip_by_state.merge(
+    state_shapes, how='inner', on='state'
+)
+nfip_by_state = gpd.GeoDataFrame(
+    nfip_by_state, geometry='geometry')
+nfip_by_state = nfip_by_state.set_index('state').drop(
+    ['Alaska', 'Hawaii']
+).reset_index()
+
+# Filter multiple loss to <11 losses and contiguous states
+multiple_loss_df = multiple_loss_df[
+    (multiple_loss_df['latitude'] > 24.4) & 
+    (multiple_loss_df['latitude'] < 49.5) & 
+    (multiple_loss_df['longitude'] < -67) &
+    (multiple_loss_df['longitude'] > -125)
+    ]
+multiple_loss_df = multiple_loss_df[multiple_loss_df['totalLosses'] < 11]
+multiple_loss_gdf = gpd.GeoDataFrame(
+    multiple_loss_df, crs='EPSG:4326', 
+    geometry=gpd.points_from_xy(
+        multiple_loss_df.longitude, multiple_loss_df.latitude
+    )
+)
+
+import matplotlib.pyplot as plt
+fig, ax = plt.subplots(figsize=(8, 6))
+nfip_by_state_plot = nfip_by_state.plot(
+    ax=ax,
+    column='percent_nfip',
+    legend=True
+)
+multiple_loss_gdf.plot(
+    ax=ax,
+    markersize=0.05,
+    color='#FE420F'
+)
+ax.set_axis_off()
+ax.set_title(
+    'National Flood Insurance Program Takeup Rate (%) by State (Multiple Claim Properties Highlighted)', fontsize=9.5
+)
+plt.tight_layout()
+plt.show()
 ```
