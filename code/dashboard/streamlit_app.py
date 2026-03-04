@@ -5,7 +5,7 @@ import altair as alt
 
 
 # file mappings
-path_regions = 'FemaRegionsProcessedNoGeo.csv'
+path_regions = 'FemaRegionsProcessed.csv'
 if not os.path.isfile(path_regions):
     path_regions = f'https://github.com/bjaffe1/final-project/tree/main/data/derived-data/{path_regions}'
 
