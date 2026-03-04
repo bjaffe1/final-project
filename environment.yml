@@ -2,7 +2,7 @@ name: final-project-brook
 channels:
   - conda-forge
 dependencies:
-  - python=3.11
+  - python=3.13.11
   - pandas
   - geopandas
   - matplotlib
