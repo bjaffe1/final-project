@@ -194,9 +194,14 @@ df_penetration['percent_sfha'] = df_penetration['totalResStructuresSfha'] / (
 
 # Make county names match property value data
 penetration_counties = []
+i = 0
 for county in df_penetration['county']:
-    county_full = county + ' County'
+    if df_penetration.loc[i, 'state'] == 'Louisiana':
+        county_full = county + ' Parish'
+    else:
+        county_full = county + ' County'
     penetration_counties.append(county_full)
+    i += 1
 df_penetration['county'] = penetration_counties
 
 # Drop unnecessary columns
@@ -400,6 +405,25 @@ df_fema_regions['percent_multiple_loss'] = (
     df_fema_regions['multiple_loss_properties'] / 
     df_fema_regions['totalResStructures']) * 100
 
+# Create a data frame with property values/trends/percent sfha by state
+output_states = script_dir / '../data/derived-data/states_processed.csv'
+df_states = df_home_values.merge(
+    df_penetration[['county','state','percent_sfha']],
+    how='inner', on=['county','state']
+)
+wm = lambda x: np.average(x, 
+                weights=df_states.loc[x.index, 'totalResStructures'])
+df_states = df_states[[
+    'state','county','2026-01-31', 'totalResStructures',
+    'percent_growth','percent_sfha'
+]].groupby('state').agg(
+    totalResStructures = ('totalResStructures','sum'),
+    average_value = ('2026-01-31', wm),
+    percent_growth = ('percent_growth', wm),
+    percent_sfha = ('percent_sfha', wm)
+).reset_index()
+
+df_states.to_csv(output_states)
 df_home_values.to_csv(output_home_values)
 df_penetration.to_csv(output_penetration_rates, index=False)
 df_multiple_loss.to_csv(output_multiple_loss, index=False)
