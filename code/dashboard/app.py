@@ -1,14 +1,21 @@
+import os
 import streamlit as st
 import pandas as pd
 import altair as alt
 
 
 # file mappings
-path_regions = 'code/dashboard/FemaRegionsProcessed.csv'
+path_regions = 'FemaRegionsProcessed.csv'
+if not os.path.isfile(path_regions):
+    path_regions = 'code/dashboard/FemaRegionsProcessed.csv'
 
-path_property = 'code/dashboard/home_values_processed.csv'
+path_property = 'home_values_processed.csv'
+if not os.path.isfile(path_property):
+    path_property = 'code/dashboard/home_values_processed.csv'
 
-path_nfip = 'code/dashboard/residential-penetration-rates.csv'
+path_nfip = 'residential_penetration_rates.csv'
+if not os.path.isfile(path_nfip):
+    path_nfip = 'code/dashboard/residential_penetration_rates.csv'
 
 # page configuration
 st.set_page_config(
@@ -69,7 +76,6 @@ def filter_data(level, var):
     return df_to_plot, plot_title
 
 # plot data
-@st.cache_data
 def plot_data(level, var):
     df_to_plot, plot_title = filter_data(level, var)
     if exclude_outliers:
