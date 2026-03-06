@@ -400,14 +400,6 @@ df_fema_regions['percent_multiple_loss'] = (
     df_fema_regions['multiple_loss_properties'] / 
     df_fema_regions['totalResStructures']) * 100
 
-# Save a version with no geometry columns
-output_fema_regions_no_geo = script_dir / '../data/derived-data/FemaRegionsProcessedNoGeo.csv'
-df_fema_regions_no_geo = df_fema_regions.drop(
-    columns=['name','address','city','state','zipCode','states',
-             'loc','regionGeometry']
-)
-
-df_fema_regions_no_geo.to_csv(output_fema_regions_no_geo)
 df_home_values.to_csv(output_home_values)
 df_penetration.to_csv(output_penetration_rates, index=False)
 df_multiple_loss.to_csv(output_multiple_loss, index=False)
