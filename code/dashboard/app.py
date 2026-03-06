@@ -1,4 +1,5 @@
 import os
+import numpy as np
 import streamlit as st
 import pandas as pd
 import altair as alt
@@ -17,6 +18,10 @@ path_nfip = 'residential_penetration_rates.csv'
 if not os.path.isfile(path_nfip):
     path_nfip = 'code/dashboard/residential_penetration_rates.csv'
 
+path_states = 'states_processed.csv'
+if not os.path.isfile(path_states):
+    path_states = '/code/dashboard/residential_penetration_rates.csv'
+
 # page configuration
 st.set_page_config(
     page_title='Special Flood Hazard Areas and Property Values',
@@ -27,7 +32,7 @@ st.title('Special Flood Hazard Areas and Property Values')
 # sidebar controls
 level = st.sidebar.selectbox(
     'Region type',
-    ['County','FEMA Region']
+    ['County','State','FEMA Region']
 )
 variable_to_compare = st.sidebar.selectbox(
     'Metric',
@@ -44,11 +49,13 @@ exclude_outliers = st.sidebar.checkbox(
 def load_data(level):
     if level == 'FEMA Region':
         df = pd.read_csv(path_regions)
+    elif level == 'State':
+        df = pd.read_csv(path_states)
     else:
         df = pd.read_csv(path_property)
         df_nfip = pd.read_csv(path_nfip)[[
             'state','county','percent_sfha']]
-        df = df.merge(df_nfip, how='inner', on=['state','county'])
+        df = df.merge(df_nfip, how='inner', on=['state','county']).reset_index()
     return df
 
 # Filter data
@@ -64,6 +71,15 @@ def filter_data(level, var):
             df_to_plot = df[['fema_region','percent_sfha', 'states',
                              'percent_growth_property_values','totalResStructures']]
             plot_title = 'Average % Growth in Property Values from January 2016-January 2026 vs Residences in SFHAs (%), FEMA Regions'
+    elif level == 'State':
+        if var == 'Average property value, January 2026':
+            df_to_plot = df[['state','percent_sfha',
+                             'average_value','totalResStructures']]
+            plot_title = 'Average Property Value vs Residences in SFHAs (%), States'
+        else:
+            df_to_plot = df[['state','percent_sfha',
+                             'percent_growth','totalResStructures']]
+            plot_title = 'Average % Growth in Property Values from January 2016-January 2026 vs Residences in SFHAs (%), States'
     else:
         if var == 'Average property value, January 2026':
             df_to_plot = df[['county', 'state', 'percent_sfha',
@@ -87,7 +103,17 @@ def plot_data(level, var):
         else:
             y_var = 'percent_growth_property_values'
             y_title = '% Growth in home values'
-        name='fema_region'
+        tooltip=['fema_region','states','percent_sfha',
+                 y_var,'totalResStructures']
+    elif level == 'State':
+        if var == 'Average property value, January 2026':
+            y_var = 'average_value'
+            y_title = 'Average Property Value ($)'
+        else:
+            y_var = 'percent_growth'
+            y_title = '% Growth in home values'
+        tooltip=['state','percent_sfha',
+                 y_var,'totalResStructures']
     else:
         if var == 'Average property value, January 2026':
             y_var = '2026-01-31'
@@ -95,13 +121,13 @@ def plot_data(level, var):
         else:
             y_var = 'percent_growth'
             y_title = '% Growth in home values'
-        name='county'
+        tooltip=['county','state','percent_sfha',
+                 y_var,'totalResStructures']
     plot = alt.Chart(df_to_plot, title=plot_title).mark_point().encode(
         x = alt.X('percent_sfha').title('% of homes in SFHAs'),
         y = alt.Y(y_var).title(y_title),
         color = alt.Color('totalResStructures').title('Total residential properties'),
-        tooltip=[name, 'percent_sfha', 
-                 y_var, 'totalResStructures']
+        tooltip=tooltip
     )
     return plot
 
