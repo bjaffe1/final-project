@@ -99,8 +99,7 @@ def plot_data(level, var):
     plot = alt.Chart(df_to_plot, title=plot_title).mark_point().encode(
         x = alt.X('percent_sfha').title('% of homes in SFHAs'),
         y = alt.Y(y_var).title(y_title),
-        color = alt.Color('totalResStructures').title(
-            'Total residential properties'),
+        color = alt.Color('totalResStructures').title('Total residential properties'),
         tooltip=[name, 'percent_sfha', 
                  y_var, 'totalResStructures']
     )
