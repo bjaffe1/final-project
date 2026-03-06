@@ -38,6 +38,10 @@ variable_to_compare = st.sidebar.selectbox(
     ['Average property value, January 2026',
      'Average growth in property values, 2016-2026']
 )
+exclude_outliers = st.sidebar.checkbox(
+    'Exclude outliers',
+    value=False
+)
 
 # load data
 @st.cache_data
@@ -57,23 +61,29 @@ def filter_data(level, var):
     df = load_data(level)
     if level == 'FEMA Region':
         if var == 'Average property value, January 2026':
-            df_to_plot = df[['fema_region','percent_sfha','average_property_value_2026']]
+            df_to_plot = df[['fema_region','percent_sfha','average_property_value_2026',
+                             'totalResStructures','states']]
             plot_title = 'Average Property Value vs Residences in SFHAs (%), FEMA Regions'
         else:
-            df_to_plot = df[['fema_region','percent_sfha','percent_growth_property_values']]
+            df_to_plot = df[['fema_region','percent_sfha', 'states',
+                             'percent_growth_property_values','totalResStructures']]
             plot_title = 'Average % Growth in Property Values from January 2016-January 2026 vs Residences in SFHAs (%), FEMA Regions'
     else:
         if var == 'Average property value, January 2026':
-            df_to_plot = df[['county', 'percent_sfha','2026-01-31']]
+            df_to_plot = df[['county', 'state', 'percent_sfha',
+                             '2026-01-31','totalResStructures']]
             plot_title = 'Average Property Value vs Residences in SFHAs (%), Counties'
         else:
-            df_to_plot = df[['county', 'percent_sfha', 'percent_growth']]
+            df_to_plot = df[['county', 'state', 'percent_sfha', 
+                             'percent_growth','totalResStructures']]
             plot_title = 'Average % Growth in Property Values from January 2016-January 2026 vs Residences in SFHAs (%), Counties'
     return df_to_plot, plot_title
 
 # plot data
 def plot_data(level, var):
     df_to_plot, plot_title = filter_data(level, var)
+    if exclude_outliers:
+        df_to_plot = df_to_plot[df_to_plot['percent_sfha'] < 20]
     if level == 'FEMA Region':
         if var == 'Average property value, January 2026':
             y_var = 'average_property_value_2026'
@@ -81,6 +91,7 @@ def plot_data(level, var):
         else:
             y_var = 'percent_growth_property_values'
             y_title = '% Growth in home values'
+        name='fema_region'
     else:
         if var == 'Average property value, January 2026':
             y_var = '2026-01-31'
@@ -88,9 +99,14 @@ def plot_data(level, var):
         else:
             y_var = 'percent_growth'
             y_title = '% Growth in home values'
+        name='county'
     plot = alt.Chart(df_to_plot, title=plot_title).mark_point().encode(
         x = alt.X('percent_sfha').title('% of homes in SFHAs'),
-        y = alt.Y(y_var).title(y_title)
+        y = alt.Y(y_var).title(y_title),
+        color = alt.Color('totalResStructures').title(
+            'Total residential properties'),
+        tooltip=[name, 'percent_sfha', 
+                 y_var, 'totalResStructures']
     )
     return plot
 
