@@ -1,12 +1,12 @@
-# Fire Perimeter Analysis
+# Home Value and Flood Analysis
 
-This project processes and visualizes historical fire perimeter data and Canadian CPI data.
+This project visualizes relationships between Special Flood Hazard Areas (SFHAs), the prevalence of flood damage, takeup rates of National Flood Insurance Program (NFIP) flood insurance, and property values.
 
 ## Setup
 
 ```bash
 conda env create -f environment.yml
-conda activate fire_analysis
+conda activate final-project
 ```
 
 ## Project Structure
