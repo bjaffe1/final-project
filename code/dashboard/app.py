@@ -1,5 +1,4 @@
 import os
-import numpy as np
 import streamlit as st
 import pandas as pd
 import altair as alt
@@ -20,7 +19,7 @@ if not os.path.isfile(path_nfip):
 
 path_states = 'states_processed.csv'
 if not os.path.isfile(path_states):
-    path_states = '/code/dashboard/states_processed.csv'
+    path_states = 'code/dashboard/states_processed.csv'
 
 # page configuration
 st.set_page_config(
