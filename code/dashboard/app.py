@@ -42,10 +42,6 @@ exclude_outliers = st.sidebar.checkbox(
     'Exclude outliers',
     value=False
 )
-include_regression_line = st.sidebar.checkbox(
-    'Include regression line',
-    value=False
-)
 
 # load data
 @st.cache_data
@@ -99,8 +95,6 @@ def plot_data(level, var):
     df_to_plot, plot_title = filter_data(level, var)
     if exclude_outliers:
         df_to_plot = df_to_plot[df_to_plot['percent_sfha'] < 20]
-        df_to_plot = df_to_plot[df_to_plot['percent_growth'] > 2.475]
-        df_to_plot = df_to_plot[df_to_plot['percent_growth'] < 157.34]
     if level == 'FEMA Region':
         if var == 'Average property value, January 2026':
             y_var = 'average_property_value_2026'
@@ -134,10 +128,6 @@ def plot_data(level, var):
         color = alt.Color('totalResStructures').title('Total residential properties'),
         tooltip=tooltip
     )
-    if include_regression_line:
-        plot = plot + plot.transform_regression(
-            'percent_sfha', y_var
-        ).mark_line(color='blue')
     return plot
 
 st.altair_chart(plot_data(level, variable_to_compare))
