@@ -10,3 +10,19 @@ dependencies:
   - streamlit
   - altair
   - pydeck
+  - bs4
+  - fiona
+  - gdal
+  - ipykernel
+  - jupyter
+  - plotnine
+  - pyogrio
+  - scikit-learn
+  - seaborn
+  - spacy
+  - statsmodels
+  - vega_datasets
+  - pip
+  - lxml
+  - pip:
+      - vl-convert-python
