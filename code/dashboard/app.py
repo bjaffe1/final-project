@@ -20,7 +20,7 @@ if not os.path.isfile(path_nfip):
 
 path_states = 'states_processed.csv'
 if not os.path.isfile(path_states):
-    path_states = '/code/dashboard/residential_penetration_rates.csv'
+    path_states = '/code/dashboard/states_processed.csv'
 
 # page configuration
 st.set_page_config(
