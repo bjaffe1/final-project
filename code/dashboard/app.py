@@ -136,7 +136,7 @@ def plot_data(level, var):
     )
     if include_regression_line:
         plot = plot + plot.transform_regression(
-            y_var, 'percent_sfha'
+            'percent_sfha', y_var
         ).mark_line(color='blue')
     return plot
 
