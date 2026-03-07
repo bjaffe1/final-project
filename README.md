@@ -35,3 +35,6 @@ code/
    ```bash
    python code/plot_fires.py
    ```
+   
+3. The streamlit app can be accessed at the following url: https://final-project-gvz6bzmb9ah4nrbuytgysi.streamlit.app
+   Please note that the app will need to be woken up if it has not been accessed within the past 24 hours.
