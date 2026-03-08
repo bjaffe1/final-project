@@ -1,0 +1,701 @@
+---
+title: "30538 Final Project Writeup"
+author: "Brook Jaffe (M/W 9:00 section)"
+date: "9 March 2026"
+format: 
+  pdf:
+    include-in-header: 
+       text: |
+         \usepackage{fvextra}
+         \DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,commandchars=\\\{\}}
+include-before-body:
+  text: |
+    \RecustomVerbatimEnvironment{verbatim}{Verbatim}{
+      showspaces = false,
+      showtabs = false,
+      breaksymbolleft={},
+      breaklines
+    }
+output:
+  echo: false
+  eval: false
+---
+
+**Background and Research Question**
+
+This project examines the relationship between flood risk, as measured by the Special Flood Hazard Areas (SFHAs) designated by the Federal Emergency Management Agency (FEMA) and actual historical flood damage represented by National Flood Insurance (NFIP) claims, and risk aversion among home owners as  measured by property values and purchase of NFIP policies. The analysis proceeds with the following research question in mind:
+
+Does climate- and geography-related flood risk impact people's willingness to purchase flood insurance or the desirability of homes in areas with higher flood risk?
+
+To investigate this, I used the following data sets: [monthly county-level median housing value data from Zillow](https://www.zillow.com/research/data/), [a list of residential properties with multiple NFIP insurance claims](https://www.fema.gov/openfema-data-page/nfip-multiple-loss-properties-v1), [a list of residential NFIP takeup rates both in counties overall and in SFHAs](https://www.fema.gov/openfema-data-page/nfip-multiple-loss-properties-v1), an official list of FEMA regions, and [a shapefile of US states from the US Census Bureau](https://www.census.gov/geographies/mapping-files/time-series/geo/carto-boundary-file.html). Property value trends over time were meant as a proxy for the relative desirability of living in a given location, while the NFIP multiple-loss property list was used as a proxy for susceptibility to flood damage. FEMA's SFHAs are also used to represent flood risk. NFIP takeup rates are meant to demonstrate whether people are aware of flood risk, as well as the strength of NFIP outreach in a given area. Because NFIP takeup rate and SFHA data was available only at the county level, other variables were also taken at the county level (rather than a more granular one). The data sets are matched on county (after adjusting for different naming conventions across organizations) and aggregated at the state and FEMA region level.
+
+**Challenges and Limitations**
+
+Before discussing the results, it is important to highlight a few limitations in the data. First, because of the lack of more granular NFIP takeup/SFHA data, we cannot see where intra-county variation is coming from or compare homes in SFHAs to homes outside of SFHAs. Also, data on claims and takeup rates includes only insurance purchased through the NFIP rather than all flood insurance. Finally, there are two states missing from parts of the analysis: Alaska because it was not included in the property value data, and Connecticut due to a 2023 change in how Connecticut counties are structured, which made matching impossible due to the lack of 1:1 correspondence in regions that existed before and after the change.
+
+```{python}
+#| eval: true
+#| echo: false
+# Preprocessing
+import os
+import geopandas as gpd
+import pandas as pd
+from pathlib import Path
+from shapely import wkt
+import numpy as np
+
+# Process home value data
+raw_home_values = 'data/raw-data/County_zhvi_uc_sfrcondo_tier_0.33_0.67_sm_sa_month.csv'
+output_home_values = 'data/derived-data/home_values_processed.csv'
+
+df_home_values = pd.read_csv(raw_home_values)
+
+# Create column for percent growth in home values between 1/2016 and 1/2026
+df_home_values['percent_growth'] = ((df_home_values['2026-01-31'] - 
+    df_home_values['2016-01-31']) / df_home_values['2016-01-31']) * 100
+
+# Keep only necessary columns
+df_home_values = df_home_values[[
+    'RegionName', 'State',  '2016-01-31', '2026-01-31', 'percent_growth'
+]]
+
+# Rename county and state columns for merging
+df_home_values = df_home_values.rename(
+    columns={'RegionName':'county', 'State':'state'}
+)
+
+# Get full state names from abbreviations
+hv_states = []
+for state in df_home_values['state']:
+    if state == 'AL':
+        hv_states.append('Alabama')
+    elif state == 'AK':
+        hv_states.append('Alaska')
+    elif state == 'AZ':
+        hv_states.append('Arizona')
+    elif state == 'AR':
+        hv_states.append('Arkansas')
+    elif state == 'CA':
+        hv_states.append('California')
+    elif state == 'CO':
+        hv_states.append('Colorado')
+    elif state == 'CT':
+        hv_states.append('Connecticut')
+    elif state == 'DE':
+        hv_states.append('Delaware')
+    elif state == 'DC':
+        hv_states.append('District Of Columbia')
+    elif state == 'FL':
+        hv_states.append('Florida')
+    elif state == 'GA':
+        hv_states.append('Georgia')
+    elif state == 'HI':
+        hv_states.append('Hawaii')
+    elif state == 'ID':
+        hv_states.append('Idaho')
+    elif state == 'IL':
+        hv_states.append('Illinois')
+    elif state == 'IN':
+        hv_states.append('Indiana')
+    elif state == 'IA':
+        hv_states.append('Iowa')
+    elif state == 'KS':
+        hv_states.append('Kansas')
+    elif state == 'KY':
+        hv_states.append('Kentucky')
+    elif state == 'LA':
+        hv_states.append('Louisiana')
+    elif state == 'ME':
+        hv_states.append('Maine')
+    elif state == 'MD':
+        hv_states.append('Maryland')
+    elif state == 'MA':
+        hv_states.append('Massachusetts')
+    elif state == 'MI':
+        hv_states.append('Michigan')
+    elif state == 'MN':
+        hv_states.append('Minnesota')
+    elif state == 'MS':
+        hv_states.append('Mississippi')
+    elif state == 'MO':
+        hv_states.append('Missouri')
+    elif state == 'MT':
+        hv_states.append('Montana')
+    elif state == 'NE':
+        hv_states.append('Nebraska')
+    elif state == 'NV':
+        hv_states.append('Nevada')
+    elif state == 'NH':
+        hv_states.append('New Hampshire')
+    elif state == 'NJ':
+        hv_states.append('New Jersey')
+    elif state == 'NM':
+        hv_states.append('New Mexico')
+    elif state == 'NY':
+        hv_states.append('New York')
+    elif state == 'NC':
+        hv_states.append('North Carolina')
+    elif state == 'ND':
+        hv_states.append('North Dakota')
+    elif state == 'OH':
+        hv_states.append('Ohio')
+    elif state == 'OK':
+        hv_states.append('Oklahoma')
+    elif state == 'OR':
+        hv_states.append('Oregon')
+    elif state == 'PA':
+        hv_states.append('Pennsylvania')
+    elif state == 'RI':
+        hv_states.append('Rhode Island')
+    elif state == 'SC':
+        hv_states.append('South Carolina')
+    elif state == 'SD':
+        hv_states.append('South Dakota')
+    elif state == 'TN':
+        hv_states.append('Tennessee')
+    elif state == 'TX':
+        hv_states.append('Texas')
+    elif state == 'UT':
+        hv_states.append('Utah')
+    elif state == 'VT':
+        hv_states.append('Vermont')
+    elif state == 'VA':
+        hv_states.append('Virginia')
+    elif state == 'WA':
+        hv_states.append('Washington')
+    elif state == 'WV':
+        hv_states.append('West Virginia')
+    elif state == 'WI':
+        hv_states.append('Wisconsin')
+    elif state == 'WY':
+        hv_states.append('Wyoming')
+    else:
+        hv_states.append('No state')
+df_home_values['state'] = hv_states
+
+# Add a column for FEMA region
+fema_region = []
+for state in df_home_values['state']:
+    if ((state == 'Maine') | (state == 'New Hampshire') 
+        | (state == 'Vermont') | (state == 'Massachusetts') 
+        | (state == 'Connecticut') | (state == 'Rhode Island')):
+        fema_region.append(1)
+    elif ((state == 'Maryland') | (state == 'Pennsylvania') 
+          | (state == 'West Virginia') 
+          | (state == 'District of Columbia') 
+          | (state == 'Delaware') | (state == 'Virginia')):
+        fema_region.append(2)
+    elif ((state == 'New York') | (state == 'New Jersey')):
+        fema_region.append(3)
+    elif ((state == 'North Carolina') | (state == 'South Carolina') 
+          | (state == 'Georgia') | (state == 'Florida') 
+          | (state == 'Alabama') | (state == 'Mississippi')
+          | (state == 'Tennessee') | (state == 'Kentucky')):
+        fema_region.append(4)
+    elif ((state == 'Illinois') | (state == 'Indiana') 
+          | (state == 'Ohio') | (state == 'Michigan') 
+          | (state == 'Wisconsin') | (state == 'Minnesota')):
+        fema_region.append(5)
+    elif ((state == 'New Mexico') | (state == 'Texas') 
+          | (state == 'Oklahoma') | (state == 'Louisiana') 
+          | (state == 'Arkansas')):
+        fema_region.append(6)
+    elif ((state == 'Nebraska') | (state == 'Kansas') 
+          | (state == 'Missouri') | (state == 'Iowa')):
+        fema_region.append(7)
+    elif ((state == 'Montana') | (state == 'North Dakota') 
+          | (state == 'South Dakota') | (state == 'Wyoming') 
+          | (state == 'Utah') | (state == 'Colorado')):
+        fema_region.append(8)
+    elif ((state == 'Nevada') | (state == 'Arizona') 
+          | (state == 'California') | (state == 'Hawaii')):
+        fema_region.append(9)
+    elif ((state == 'Alaska') | (state == 'Washington') 
+          | (state == 'Oregon') | (state == 'Idaho')):
+        fema_region.append(10)
+    else:
+        fema_region.append('No region')
+df_home_values['fema_region'] = fema_region
+
+df_home_values = df_home_values.dropna()
+
+# Process penetration rates data
+raw_penetration_rates = 'data/raw-data/NfipResidentialPenetrationRates.csv'
+output_penetration_rates = 'data/derived-data/residential_penetration_rates.csv'
+
+df_penetration = pd.read_csv(raw_penetration_rates)
+
+# Create a column for percentage of structures in special flood hazard areas
+df_penetration['percent_sfha'] = df_penetration['totalResStructuresSfha'] / (
+    df_penetration['totalResStructures']) * 100
+
+# Make county names match property value data
+penetration_counties = []
+i = 0
+for county in df_penetration['county']:
+    if df_penetration.loc[i, 'state'] == 'Louisiana':
+        county_full = county + ' Parish'
+    else:
+        county_full = county + ' County'
+    penetration_counties.append(county_full)
+    i += 1
+df_penetration['county'] = penetration_counties
+
+# Drop unnecessary columns
+df_penetration = df_penetration.drop(columns=['asOfDate', 'id'])
+
+# Create a column for FEMA region
+fema_region_penetration_rate = []
+for state in df_penetration['state']:
+    if ((state == 'Maine') | (state == 'New Hampshire') 
+        | (state == 'Vermont') | (state == 'Massachusetts') 
+        | (state == 'Connecticut') | (state == 'Rhode Island')):
+        fema_region_penetration_rate.append(1)
+    elif ((state == 'Maryland') | (state == 'Pennsylvania') 
+          | (state == 'West Virginia') 
+          | (state == 'District of Columbia') 
+          | (state == 'Delaware') | (state == 'Virginia')):
+        fema_region_penetration_rate.append(2)
+    elif ((state == 'New York') | (state == 'New Jersey')):
+        fema_region_penetration_rate.append(3)
+    elif ((state == 'North Carolina') | (state == 'South Carolina') 
+          | (state == 'Georgia') | (state == 'Florida') 
+          | (state == 'Alabama') | (state == 'Mississippi')
+          | (state == 'Tennessee') | (state == 'Kentucky')):
+        fema_region_penetration_rate.append(4)
+    elif ((state == 'Illinois') | (state == 'Indiana') 
+          | (state == 'Ohio') | (state == 'Michigan') 
+          | (state == 'Wisconsin') | (state == 'Minnesota')):
+        fema_region_penetration_rate.append(5)
+    elif ((state == 'New Mexico') | (state == 'Texas') 
+          | (state == 'Oklahoma') | (state == 'Louisiana') 
+          | (state == 'Arkansas')):
+        fema_region_penetration_rate.append(6)
+    elif ((state == 'Nebraska') | (state == 'Kansas') 
+          | (state == 'Missouri') | (state == 'Iowa')):
+        fema_region_penetration_rate.append(7)
+    elif ((state == 'Montana') | (state == 'North Dakota') 
+          | (state == 'South Dakota') | (state == 'Wyoming') 
+          | (state == 'Utah') | (state == 'Colorado')):
+        fema_region_penetration_rate.append(8)
+    elif ((state == 'Nevada') | (state == 'Arizona') 
+          | (state == 'California') | (state == 'Hawaii')):
+        fema_region_penetration_rate.append(9)
+    elif ((state == 'Alaska') | (state == 'Washington') 
+          | (state == 'Oregon') | (state == 'Idaho')):
+        fema_region_penetration_rate.append(10)
+df_penetration['fema_region'] = fema_region_penetration_rate
+
+# Process multiple loss property data
+raw_multiple_loss = 'data/raw-data/NfipMultipleLossProperties.csv'
+output_multiple_loss = 'data/derived-data/multiple_loss_properties.csv'
+
+df_multiple_loss = pd.read_csv(raw_multiple_loss, low_memory=False)
+
+# Filter to observations with most recent claim after the year 2000
+df_multiple_loss['mostRecentDateofLoss'] = pd.to_datetime(
+    df_multiple_loss['mostRecentDateofLoss'])
+df_multiple_loss = df_multiple_loss[
+    df_multiple_loss['mostRecentDateofLoss'].dt.year > 1999]
+
+# Drop county column (we will match to penetration rate data using fips code)
+# Drop other unnecessary columns
+df_multiple_loss = df_multiple_loss.drop(columns=['county', 'reportedCity',
+                               'communityIdNumber', 'communityName',
+                               'censusBlockGroup', 'asOfDate', 'id'])
+
+# Convert state name to title case for matching
+states_ml = []
+for state in df_multiple_loss['state']:
+    state_name = str(state).title()
+    if state_name == 'District Of Columbia':
+        state_name = 'District of Columbia'
+    states_ml.append(state_name)
+df_multiple_loss['state'] = states_ml
+
+# Add FEMA region columns
+fema_region_multiple_claims = []
+for state in df_multiple_loss['stateAbbreviation']:
+    if ((state == 'ME') | (state == 'NH') | (state == 'VT') 
+        | (state == 'MA') | (state == 'CT') | (state == 'RI')):
+        fema_region_multiple_claims.append(1)
+    elif ((state == 'MD') | (state == 'PA') | (state == 'WV')
+          | (state == 'DC') | (state == 'DE') | (state == 'VA')):
+        fema_region_multiple_claims.append(2)
+    elif ((state == 'NY') | (state == 'NJ')):
+        fema_region_multiple_claims.append(3)
+    elif ((state == 'NC') | (state == 'SC') | (state == 'GA')
+          | (state == 'FL') | (state == 'AL') | (state == 'MS')
+          | (state == 'TN') | (state == 'KY')):
+        fema_region_multiple_claims.append(4)
+    elif ((state == 'IL') | (state == 'IN') | (state == 'OH')
+          | (state == 'MI') | (state == 'WI') | (state == 'MN')):
+        fema_region_multiple_claims.append(5)
+    elif ((state == 'NM') | (state == 'TX') | (state == 'OK')
+          | (state == 'LA') | (state == 'AR')):
+        fema_region_multiple_claims.append(6)
+    elif ((state == 'NE') | (state == 'KS') | (state == 'MO')
+          | (state == 'IA')):
+        fema_region_multiple_claims.append(7)
+    elif ((state == 'MT') | (state == 'ND') | (state == 'SD')
+          | (state == 'WY') | (state == 'UT') | (state == 'CO')):
+        fema_region_multiple_claims.append(8)
+    elif ((state == 'NV') | (state == 'AZ') | (state == 'CA')
+          | (state == 'HI')):
+        fema_region_multiple_claims.append(9)
+    elif ((state == 'AK') | (state == 'WA') | (state == 'OR')
+          | (state == 'ID')):
+        fema_region_multiple_claims.append(10)
+    else:
+        fema_region_multiple_claims.append('No region')
+df_multiple_loss['fema_region'] = fema_region_multiple_claims
+
+# Add data to FEMA regions geography for streamlit
+raw_fema_regions = 'data/raw-data/FemaRegions.csv'
+output_fema_regions = 'data/derived-data/FemaRegionsProcessed.csv'
+
+df_fema_regions = pd.read_csv(raw_fema_regions)
+
+# Rename region column for merging
+df_fema_regions = df_fema_regions.rename(
+    columns={'region':'fema_region'}
+)
+
+# Drop unnecessary columns
+df_fema_regions = df_fema_regions.drop(
+    columns=['lastRefresh','hash','id']
+)
+
+# Reorder and drop main FEMA headquarters
+df_fema_regions = df_fema_regions.dropna()
+df_fema_regions = df_fema_regions.sort_values(
+    by='fema_region', ascending=True
+)
+
+# Add a column for total residential structures
+res_structures_by_region = df_penetration[[
+    'fema_region','totalResStructures']].groupby(
+    'fema_region').sum().reset_index()
+df_fema_regions = df_fema_regions.merge(
+    res_structures_by_region, how='inner', on='fema_region'
+)
+
+# Add a column for total SFHA res structures
+res_structures_by_region_sfha = df_penetration[[
+    'fema_region','totalResStructuresSfha']].groupby(
+    'fema_region').sum().reset_index()
+df_fema_regions = df_fema_regions.merge(
+    res_structures_by_region_sfha, how='inner', on='fema_region'
+)
+
+# Add a column for % of structures in SFHAs
+df_fema_regions['percent_sfha'] = (df_fema_regions[
+    'totalResStructuresSfha'] / 
+    df_fema_regions['totalResStructures']) * 100
+
+# Add a column for average property value trends
+res_structures_by_county = df_penetration[[
+    'state', 'county', 'totalResStructures']]
+df_home_values = df_home_values.merge(
+    res_structures_by_county, how='inner', on=['state','county']
+)
+average_property_trends = []
+for i in range(1, 11):
+    subset = df_home_values[df_home_values['fema_region'] == i]
+    average_trend = np.average(
+        subset['percent_growth'],
+        weights=subset['totalResStructures']
+    )
+    average_property_trends.append(average_trend)
+df_fema_regions[
+    'percent_growth_property_values'] = average_property_trends
+
+# Add a column for average home value
+average_home_value = []
+for i in range(1, 11):
+    subset = df_home_values[df_home_values['fema_region'] == i]
+    average_value = np.average(
+        subset['2026-01-31'],
+        weights=subset['totalResStructures']
+    )
+    average_home_value.append(average_value)
+df_fema_regions['average_property_value_2026'] = average_home_value
+
+# Add a columns for total number of properties with multiple claims
+# and percent of properties with multiple claims
+multiple_loss_by_region = df_multiple_loss[[
+    'fema_region', 'totalLosses']].groupby(
+    'fema_region').sum().reset_index()
+df_fema_regions = df_fema_regions.merge(
+    multiple_loss_by_region, how='inner', on='fema_region'
+)
+multiple_loss_properties_by_region = df_multiple_loss[[
+    'fema_region', 'totalLosses']].groupby(
+    'fema_region').count().reset_index()
+multiple_loss_properties_by_region = multiple_loss_properties_by_region.rename(
+    columns={'totalLosses':'multiple_loss_properties'})
+df_fema_regions = df_fema_regions.merge(
+    multiple_loss_properties_by_region, how='inner', 
+    on='fema_region'
+)
+df_fema_regions['percent_multiple_loss'] = (
+    df_fema_regions['multiple_loss_properties'] / 
+    df_fema_regions['totalResStructures']) * 100
+
+# Create a data frame with property values/trends/percent sfha by state
+output_states = 'data/derived-data/states_processed.csv'
+df_states = df_home_values.merge(
+    df_penetration[['county','state','percent_sfha']],
+    how='inner', on=['county','state']
+)
+wm = lambda x: np.average(x, 
+                weights=df_states.loc[x.index, 'totalResStructures'])
+df_states = df_states[[
+    'state','county','2026-01-31', 'totalResStructures',
+    'percent_growth','percent_sfha'
+]].groupby('state').agg(
+    totalResStructures = ('totalResStructures','sum'),
+    average_value = ('2026-01-31', wm),
+    percent_growth = ('percent_growth', wm),
+    percent_sfha = ('percent_sfha', wm)
+).reset_index()
+
+df_states.to_csv(output_states)
+df_home_values.to_csv(output_home_values)
+df_penetration.to_csv(output_penetration_rates, index=False)
+df_multiple_loss.to_csv(output_multiple_loss, index=False)
+df_fema_regions.to_csv(output_fema_regions)
+```
+
+**Static Visualizations**
+```{python}
+#| eval: true
+#| echo: false
+
+import tempfile
+from IPython.display import SVG, display, Image
+import vl_convert as vlc
+
+def display_altair_png(chart, scale=2):
+    png_bytes = vlc.vegalite_to_png(chart.to_dict(), scale=scale)
+    with tempfile.NamedTemporaryFile(suffix=".png") as tmp:
+        tmp.write(png_bytes)
+        tmp.flush()
+        display(Image(filename=tmp.name))
+
+home_values = 'data/derived-data/home_values_processed.csv'
+penetration_rates = 'data/derived-data/residential_penetration_rates.csv'
+multiple_loss = 'data/derived-data/multiple_loss_properties.csv'
+
+home_values_df = pd.read_csv(home_values)
+penetration_rates_df = pd.read_csv(penetration_rates)
+multiple_loss_df = pd.read_csv(multiple_loss, low_memory=False)
+```
+```{python}
+#| eval: true
+#| echo: false
+# Plot 1
+
+import altair as alt
+
+# Create merged data frame with county-level total losses and data from penetration_rates_df, drop non-residential losses
+multiple_loss_df['fipsCountyCode'] = pd.to_numeric(
+    multiple_loss_df['fipsCountyCode'], errors='coerce')
+multiple_loss_df = multiple_loss_df.rename(columns={'fipsCountyCode':'fipsCode'})
+multiple_loss_df = multiple_loss_df[
+    (multiple_loss_df['occupancyType'] == 1) | 
+    (multiple_loss_df['occupancyType'] == 2) | 
+    (multiple_loss_df['occupancyType'] == 3) |
+    (multiple_loss_df['occupancyType'] == 11) |
+    (multiple_loss_df['occupancyType'] == 12) |
+    (multiple_loss_df['occupancyType'] == 13) |
+    (multiple_loss_df['occupancyType'] == 14) |
+    (multiple_loss_df['occupancyType'] == 15) |
+    (multiple_loss_df['occupancyType'] == 16)
+]
+multiple_loss_by_county = multiple_loss_df.groupby(
+    by='fipsCode').sum().reset_index()[['fipsCode','totalLosses']]
+multiple_loss_penetration_county_df = multiple_loss_by_county.merge(
+    penetration_rates_df, how='inner', on='fipsCode'
+)
+
+# Make a column for losses per res structure
+multiple_loss_penetration_county_df['loss_by_structure'] = multiple_loss_penetration_county_df['totalLosses'] / multiple_loss_penetration_county_df['totalResStructures']
+
+# Drop observations that show penetration rates higher than 100%
+multiple_loss_penetration_county_df = multiple_loss_penetration_county_df[
+    multiple_loss_penetration_county_df[
+        'resPenetrationRateSfha'] <= 1]
+
+# Categorize penetration rates
+penetration_category_sfha = []
+for penetration_rate in multiple_loss_penetration_county_df['resPenetrationRateSfha']:
+    if penetration_rate < 0.2:
+        penetration_category_sfha.append('0-19.99%')
+    elif penetration_rate < 0.4:
+        penetration_category_sfha.append('20-39.99%')
+    elif penetration_rate < 0.6:
+        penetration_category_sfha.append('40-59.99%')
+    elif penetration_rate < 0.8:
+        penetration_category_sfha.append('60-79.99%')
+    else:
+        penetration_category_sfha.append('80-100%')
+multiple_loss_penetration_county_df[
+    'penetration_rate_quintile'] = penetration_category_sfha
+
+# Drop observations over 50% sfha to stop compression of plot
+multiple_loss_penetration_county_df = multiple_loss_penetration_county_df[
+    multiple_loss_penetration_county_df['percent_sfha'] < 30
+    ]
+
+losses_vs_sfha = alt.Chart(
+    multiple_loss_penetration_county_df,
+    title = 'Residential Properties with Multiple NFIP Claims vs SFHA Prevalence in US Counties',
+    width=200,
+    height=100
+).mark_point(
+    size=1
+).encode(
+    x = alt.X('percent_sfha').title(
+        'Homes located within SFHAs (% of total homes)'
+        ),
+    y = alt.Y('loss_by_structure', 
+        scale=alt.Scale(type='log')).title(
+        'Multiple claims per property (log)'
+        ),
+    color=alt.Color('penetration_rate_quintile:O').title(
+        'NFIP takeup rate in SFHAs'
+        )
+)
+
+display_altair_png(losses_vs_sfha, scale=4)
+```
+
+This chart displays a positive relationship between multiple-claim properties and the percentage of homes in a county in SFHAs, indicating that SFHAs do accurately predict flood damage. It also indicates that when NFIP takeup rates in SFHAs are lower, there tend to be slightly fewer claims, which could be because takeup rates are higher in more severe SFHAs or because there will naturally be fewer claims where there are fewer policies.
+
+```{python}
+#| eval: true
+#| echo: false
+
+# Plot 2
+
+# Create merged dataframe with property value trends and percentage sfha by zip code
+home_values_sfha = home_values_df.merge(
+    penetration_rates_df, how='inner', on=['state','county']
+)
+
+# Create a new column for ranges of SFHA percentages
+sfha_range = []
+for percent in home_values_sfha['percent_sfha']:
+    if percent < 0.5:
+        sfha_range.append('<0.5%')
+    elif percent < 1:
+        sfha_range.append('0.5 - <1%')
+    elif percent < 2:
+        sfha_range.append('1% - <2%')
+    elif percent < 3:
+        sfha_range.append('2% - <3%')
+    elif percent < 4:
+        sfha_range.append('3% - <4%')
+    elif percent < 5:
+        sfha_range.append('4% - <5%')
+    elif percent < 10:
+        sfha_range.append('5% - <10%')
+    else:
+        sfha_range.append('10% or greater')
+home_values_sfha['sfha_range'] = sfha_range
+
+# Group by SFHA range and find average property value trend
+home_value_by_sfha_amount = home_values_sfha[['sfha_range', 'percent_growth']].groupby('sfha_range').mean().reset_index()
+
+# Make a chart showing property value trends by SFHA range
+property_value_sfha = alt.Chart(
+    home_value_by_sfha_amount, width=150, height=75,
+    title = 'Property Value Trends (2016-2026) by Flood Zone Prevalence in US Counties'
+).mark_bar().encode(
+    x = alt.X('sfha_range:O', 
+    sort=['<0.5%','0.5 - <1%','1% - <2%',
+    '2% - <3%','3% - <4%','4% - <5%','5% - <10%',
+    '10% or greater'],
+    axis=alt.Axis(labelAngle = -45)).title(
+        'Proportion of residences in SFHAs'
+    ),
+    y = alt.Y('percent_growth:Q').title(
+        'Mean value increase (%)'
+    )
+)
+
+display_altair_png(property_value_sfha, scale=4)
+```
+
+This second plot demonstrates a clear negative relationship between the percentage of homes in a county located in SFHAs and the trend in that county's residential property values over the past decade. The difference in mean property value trend that is associated with relatively small changes in the SFHA prevalence within a county is suggestive that climate-related flood risk (in other words, the increasing severity of the risk associated with a SFHAs) may be priced in when homebuyers are determining where to purchase between otherwise comparable counties.
+
+```{python}
+#| eval: true
+#| echo: false
+
+# Spatial visualization
+
+# Map showing NFIP takeup rates by state and multiple loss properties
+nfip_by_state = penetration_rates_df[[
+    'state', 'resContractsInForce', 'totalResStructures']].groupby(
+        'state').sum().reset_index()
+nfip_by_state['percent_nfip'] = (
+    nfip_by_state['resContractsInForce'] / nfip_by_state['totalResStructures']) * 100
+
+# Link state map to NFIP data, filter to contiguous 48 states
+states_path = 'data/raw-data/cb_2018_us_state_500k/cb_2018_us_state_500k.shp'
+state_shapes = gpd.read_file(states_path)
+state_shapes = state_shapes.to_crs('EPSG:4326')
+state_shapes = state_shapes.rename(columns={'NAME':'state'})
+state_shapes = state_shapes[['state','geometry']]
+nfip_by_state = nfip_by_state.merge(
+    state_shapes, how='inner', on='state'
+)
+nfip_by_state = gpd.GeoDataFrame(
+    nfip_by_state, geometry='geometry')
+nfip_by_state = nfip_by_state.set_index('state').drop(
+    ['Alaska', 'Hawaii']
+).reset_index()
+
+# Filter multiple loss to >4 losses and contiguous states
+multiple_loss_df = multiple_loss_df[
+    (multiple_loss_df['latitude'] > 24.4) & 
+    (multiple_loss_df['latitude'] < 49.5) & 
+    (multiple_loss_df['longitude'] < -67) &
+    (multiple_loss_df['longitude'] > -125)
+    ]
+multiple_loss_df = multiple_loss_df[multiple_loss_df['totalLosses'] > 4]
+multiple_loss_gdf = gpd.GeoDataFrame(
+    multiple_loss_df, crs='EPSG:4326', 
+    geometry=gpd.points_from_xy(
+        multiple_loss_df.longitude, multiple_loss_df.latitude
+    )
+)
+
+import matplotlib.pyplot as plt
+fig, ax = plt.subplots(figsize=(4, 3))
+nfip_by_state_plot = nfip_by_state.plot(
+    ax=ax,
+    column='percent_nfip',
+    legend=True,
+    
+)
+multiple_loss_gdf.plot(
+    ax=ax,
+    markersize=0.01,
+    color='#FE420F'
+)
+ax.set_axis_off()
+ax.set_title(
+    'NFIP Takeup Rate (%) by State', fontsize=9.5
+)
+plt.tight_layout()
+plt.show()
+```
+
+The final static visualization is a map displaying the percentage of residences in each state covered by a flood insurance plan under the NFIP. The orange dots represent properties with 5 or more NFIP insurance claims. Takeup rates are higher in states known for natural disasters like hurricanes (in particular Texas, Louisiana, and Florida), and the locations of properties with large numbers of claims are in many cases consistent with where we would expect high levels of hurricane-induced flood damage (such as the Gulf Coast) or flood damage related to rising sea levels (such as Cape Cod), which suggests people are thinking about climate when deciding whether to purchase flood insurance. However, there are many locations with high numbers of multiple-loss properties and low takeup rates, and takeup rates are fairly low everywhere, suggesting that there is room for more outreach.
+
+**Streamlit**
+
+The streamlit dashboard, available [here](https://final-project-gvz6bzmb9ah4nrbuytgysi.streamlit.app), shows average property values and average growth in property values compared to the percentage of homes in a geographic area located in SFHAs. The user can choose to display the plots at the county, state, or FEMA region level, as well as choosing between the two outcome variables (property value and property value growth). The user can also choose whether to exclude outliers (functionally, this means counties with more than 20% of residences in SFHAs), which changes the range of the x-axis and makes variation at the lower end of the distribution easier to see. All of the plots show a general negative relationship between SFHA prevalence and both property value and growth in property values. This indicates both that longstanding flood risk (or something correlated with it) is likely priced into regional housing prices and that increasing flood risk as a result of climate change may be dynamically incorporated as property values continue to shift.
