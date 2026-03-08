@@ -22,15 +22,15 @@ data/
     NfipResidentialPenetrationRates.csv                      # NFIP penetration rates and SFHA specific NFIP penetration rates
   derived-data/                                              # Filtered data (with renaming for easier merging) and output plots
     FemaRegionsProcessed.csv                                 # FEMA regions with additional aggregated information
-    home_values_processed.csv                                # Home values data filtered to only 2016 and 2026 values with a column for %                                                                # growth and a column for SFHAs
+    home_values_processed.csv                                # Home values data filtered to only 2016 and 2026 values with a column for % growth and a column for SFHAs
     multiple_loss_properties.csv                             # Multiple-loss data filtered to properties with most recent loss after 2000
     residential_penetration_rates.csv                        # Residential penetration rates with a column added for % SFHA
-    states_processed.csv                                     # Variables needed for dashboard (property values and % SFHA) aggregated at                                                                 # state level
+    states_processed.csv                                     # Variables needed for dashboard (property values and % SFHA) aggregated at state level
     losses_vs_sfha.png                                       # Scatter plot (static visualization 1)
     propetry_values_vs_sfha.png                              # Bar graph (static visualization 2)
     nfip_map.png                                             # NFIP takeup rate/multiple-loss properties map (static visualization 3)
 code/
-  preprocessing.py                                           # Pre-processes data, including some merging and the creation of the states                                                                 # dataset
+  preprocessing.py                                           # Pre-processes data, including some merging and the creation of the states dataset
   plots.qmd                                                  # Generates the plots in derived-data
   dashboard/                                                 # Necessary data and scripts for the functioning of the streamlit app
     app.py                                                   # Streamlit script
