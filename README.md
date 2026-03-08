@@ -53,8 +53,13 @@ code/
    Please note that the app will need to be woken up if it has not been accessed within the past 24 hours.
 
 ## Data Sources
+
 US states shapefile: https://www.census.gov/geographies/mapping-files/time-series/geo/carto-boundary-file.html
+
 FEMA regions: https://catalog.data.gov/dataset/federal-emergency-management-agency-fema-regions
+
 Housing values data: https://www.zillow.com/research/data/
+
 NFIP multiple loss properties: https://www.fema.gov/openfema-data-page/nfip-multiple-loss-properties-v1
+
 NFIP takeup rates: https://www.fema.gov/openfema-data-page/nfip-multiple-loss-properties-v1
